@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard – Gesundheitsbarometer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Chart.js für Diagramme -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f4f6f9; }
+    header { background: #2c3e50; color: white; padding: 15px 20px; }
+    .container { padding: 20px; }
+    .card {
+      background: white;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    input { padding: 8px; margin: 5px 0; width: 250px; }
+    button {
+      padding: 8px 15px;
+      cursor: pointer;
+      background: #3498db;
+      color: white;
+      border: none;
+      border-radius: 5px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid #ddd;
+      text-align: left;
+    }
+    th { background: #f1f1f1; }
+    #dashboardBereich { display:none; }
+  </style>
+
+  <!-- Supabase Modul -->
+  <script type="module">
+    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/supabase.js";
+
+    const SUPABASE_URL = "https://fhbwnhxvemzleslljcto.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_0lZDSU3wtYyC54QSk4HIfQ_Kxkbvgn5"; // anon key
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let chartInstance = null;
+
+    // Globale Funktionen
+    window.login = async function() {
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+
+      if (!email || !password) { alert("Bitte Email und Passwort eingeben."); return; }
+
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (error || !data.session) {
+        alert("Login fehlgeschlagen. Überprüfe Email/Passwort.");
+        return;
+      }
+
+      if (data.user.email !== "leibold.ch@gmail.com") { 
+        alert("Zugriff verweigert: nur Schulleitung.");
+        await supabase.auth.signOut();
+        return;
+      }
+
+      // Dashboard anzeigen
+      document.getElementById("loginBereich").style.display = "none";
+      document.getElementById("dashboardBereich").style.display = "block";
+
+      ladeDashboard();
+    }
+
+    window.logout = async function() {
+      await supabase.auth.signOut();
+      document.getElementById("dashboardBereich").style.display = "none";
+      document.getElementById("loginBereich").style.display = "block";
+    }
+
+    async function ladeDashboard() {
+      const { data, error } = await supabase.from("gesundheitsbarometer").select("*");
+
+      if (error) {
+        alert("Fehler beim Laden der Daten: " + error.message);
+        return;
+      }
+
+      renderTabelle(data);
+      renderStatistik(data);
+      renderChart(data);
+    }
+
+    function renderTabelle(data) {
+      const tableDiv = document.getElementById("tabelle");
+      if (!data.length) {
+        tableDiv.innerHTML = "Keine Daten vorhanden.";
+        return;
+      }
+
+      let html = "<table><tr>";
+      Object.keys(data[0]).forEach(key => { html += `<th>${key}</th>`; });
+      html += "</tr>";
+
+      data.forEach(row => {
+        html += "<tr>";
+        Object.values(row).forEach(value => { html += `<td>${value}</td>`; });
+        html += "</tr>";
+      });
+
+      html += "</table>";
+      tableDiv.innerHTML = html;
+    }
+
+    function renderStatistik(data) {
+      document.getElementById("anzahl").innerText = data.length;
+    }
+
+    function renderChart(data) {
+      // Beispiel: zählt Einträge nach Feld "stimmung"
+      const counts = {};
+      data.forEach(e => { if(e.stimmung){ counts[e.stimmung]=(counts[e.stimmung]||0)+1; } });
+
+      const ctx = document.getElementById("chart").getContext("2d");
+      if (chartInstance) chartInstance.destroy();
+
+      chartInstance = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: Object.keys(counts),
+          datasets: [{ label: "Häufigkeit Stimmung", data: Object.values(counts), backgroundColor:"#3498db" }]
+        },
+        options: { responsive:true }
+      });
+    }
+  </script>
+</head>
+
+<body>
+
+<header>
+  <h1>📊 Gesundheitsbarometer – Schulleitungsdashboard</h1>
+</header>
+
+<div class="container">
+
+  <div id="loginBereich" class="card">
+    <h2>Login</h2>
+    <input type="email" id="email" placeholder="Email"><br>
+    <input type="password" id="password" placeholder="Passwort"><br>
+    <button id="loginButton">Login</button>
+  </div>
+
+  <div id="dashboardBereich">
+
+    <div class="card">
+      <button onclick="logout()">Logout</button>
+    </div>
+
+    <div class="card">
+      <h2>Gesamtanzahl Einträge</h2>
+      <p><strong id="anzahl">0</strong></p>
+    </div>
+
+    <div class="card">
+      <h2>Diagramm</h2>
+      <canvas id="chart"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Alle Einträge</h2>
+      <div id="tabelle"></div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+  // Event Listener für Button
+  document.getElementById("loginButton").addEventListener("click", login);
+</script>
+
+</body>
+</html>
